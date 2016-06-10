@@ -1,25 +1,195 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Reproducible Research"
+author: "Femkevandenend"
+date: "7 juni 2016"
+output: html_document
 ---
 
+This is assignment number 1 of the Course "Reproducible Research" of the data scientis course of Coursera
 
-## Loading and preprocessing the data
+**Loading and preprocessing the data**
 
-
-
-## What is mean total number of steps taken per day?
-
+1. Load the data
 
 
-## What is the average daily activity pattern?
+```{r}
+setwd("E:/Kennis/Coursera/Data scientist/Reproducible research/repdata-data-activity/")
+ACT = read.csv("activity.csv") 
+```
+
+**What is mean total number of steps taken per day?**
+
+1. The total number of steps taken is 570.608
+
+```{r, echo=TRUE}
+library(sqldf)
+Total_steps <- sqldf('select SUM(steps) from ACT')
+Total_steps["SUM_STEPS"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+Total_steps$SUM_STEPS <- as.numeric(Total_steps$'SUM(steps)') # fills the new column with the numeric number of steps
+Total_steps
+
+steps_per_day <- sqldf('select date,SUM(steps) from ACT group by date ')
+steps_per_day["SUM_STEPS"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+steps_per_day$SUM_STEPS <- as.numeric(steps_per_day$'SUM(steps)') # fills the new column with the numeric number of steps
+```
+
+2. Creating a histogram of the total number of steps taken per day
+
+```{r, echo=TRUE}
+hist(steps_per_day$SUM_STEPS)
+```
+
+3. Calculation of the average number of steps per day ignoring the missing values
+
+```{r, echo=TRUE}
+AvG_steps_per_day <- mean(steps_per_day$SUM_STEPS, na.rm=TRUE)
+MED_steps_per_day <- median(steps_per_day$SUM_STEPS, na.rm=TRUE)
+AvG_steps_per_day 
+MED_steps_per_day
+```
+
+Table 1: Average and Median of steps per day
+
+|               | Average  | Median  |
+|---------------|----------|---------|
+| Steps per day | 10.766   | 10.765  |
+
+**What is the average daily activity pattern? **
+
+1. Make a time plot
+
+```{r}
+library(lattice)
+
+# average steps per interval to across days
+ACT_no_NA <-na.omit(ACT) # remove all the NA's of the data to calculate the average steps per day per interval without the missing values 53 unique days
+
+AVG_interval <- sqldf('select interval,AVG(steps) from ACT_no_NA group by interval ')
+AVG_interval["Average_number_of_steps_across_days"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+AVG_interval$Average_number_of_steps_across_days <- as.numeric(AVG_interval$'AVG(steps)')
+```
+
+*Figure 1: Number of steps per interval across all days
+```{r}
+# creating the plot
+xyplot(Average_number_of_steps_across_days~interval,AVG_interval,type = "l")
+
+```
+
+2. Determine the interval with highest number of steps
+
+```{r}
+
+#What is the max of steps all intervals? It is ~206
+MAX <- data.frame(Average_number_of_steps_across_days=max(AVG_interval$Average_number_of_steps_across_days))
+MAX# highest number of steps across days for an interval is 206,1698 steps on average
+max2 <-max(AVG_interval$Average_number_of_steps_across_days)
+max2
+# which interval has 206,1698 steps?
+MAX_interval<-merge(x = AVG_interval, y = MAX, by = "Average_number_of_steps_across_days", all.y = TRUE)
+MAX_interval
+# interval 835 has the highest number of steps in average across days
+```
+
+The interval with the highest number of steps is 835 and has 206,1698 steps on average across days.
+
+**Imputing missing values**
+
+1. First we have to investigate the number of missing values in the data
+Number of rows that contain missing values on the number of steps is 2.304
+```{r}
+sum(is.na(ACT$steps))  # number of missing values in column "steps" in the data
+```
+
+There are 8 unique days that only contain missing data field. (total number of unique days in the data is 61)
+
+Calculate the average number of steps per 5 minute interval per day and replace the missing values for that day by this value
+
+```{r}
+ACT_no_NA <-na.omit(ACT) # remove all the NA's of the data to calculate the average steps per day per interval without the missing values 53 unique days
+
+unique(ACT$date) # there are 61 unique days. Conclusion: Not every day contains data
+```
+
+2. Devise a strategy for filling of the missing
+
+Two different ways to fill in the missing values:
+1. For all interval missing values the average number of step of that interval acrosse that day (to keep the average per day the same) is in filled in. and for days that do not contain any values (so all missing values )
+2. For the days that every interval has missing data the average per interval over across all days is used
+
+```{r}
+steps_per_day_no_NA <- sqldf('select date,AVG(steps) from ACT_no_NA group by date ')
+steps_per_day_no_NA["Totaal_steps"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+steps_per_day_no_NA$Totaal_steps <- as.numeric(steps_per_day_no_NA$'AVG(steps)') # fills the new column with the numeric number of steps
+
+  # average steps per interval to join on the missing values on days there only missing values
+
+AVG_interval <- sqldf('select interval,AVG(steps) from ACT_no_NA group by interval ')
+AVG_interval["AVG_interval"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+AVG_interval$AVG_interval <- as.numeric(AVG_interval$'AVG(steps)')
+
+# join the value per day to the original file and create a new column with the missing values as the average steps per day per interval.There are also days that do not have any steps at all those shouls be filled with the average
+
+ACT_plus<-merge(x = ACT, y = steps_per_day_no_NA, by = "date" , all.x = TRUE) # jointo all dates the average interval steps but for the dates that contain all NA
+ACT_plus <- merge (x=ACT_plus, y=AVG_interval , by="interval", all.x = TRUE) # join to all the dates that have only NA (8 dates fields the average interval over all days)
+
+ACT_plus["New_steps_filled_in_NA"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+ACT_plus$New_steps_filled_in_NA <-ifelse(is.na(ACT_plus$steps) & is.na(ACT_plus$Totaal_steps), ACT_plus$AVG_interval,
+                        ifelse(is.na(ACT_plus$steps) & !is.na(ACT_plus$Totaal_steps), ACT_plus$Totaal_steps,
+                                         ACT_plus$steps))  # all other values map to NA
+# deleting all unneccesary columns and thus creating the new file
+ACT_NEW <-ACT_plus[,c("date","interval","New_steps_filled_in_NA")] 
+```
+
+```{r, echo=TRUE}
 
 
+steps_per_day_2 <- sqldf('select date,SUM(New_steps_filled_in_NA) from ACT_NEW group by date ')
+steps_per_day_2["SUM_STEPS"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+steps_per_day_2$SUM_STEPS <- as.numeric(steps_per_day_2$'SUM(New_steps_filled_in_NA)') # fills the new column with the numeric number of steps
 
-## Imputing missing values
+Mean_steps_per_day_2  <- mean(steps_per_day_2$SUM_STEPS, na.rm=TRUE)
+Median_steps_per_day_2  <- median(steps_per_day_2$SUM_STEPS, na.rm=TRUE)
+
+Mean_steps_per_day_2
+Median_steps_per_day_2
+```
+
+Table 1: Average and Median of steps per day
+
+|               | Average     | Median    |
+|---------------|-------------|-----------|
+| Steps per day |10766.19     | 10766.19  |
+
+There is no difference in teh average. But there is difference in the median. It is the same as the AVerage.
+
+**Are there differences in activity patterns between weekdays and weekends?**
+1. Create a new variable that contains week_day and weekends
+
+```{r, echo=TRUE}
+#create a new column weekdays vs weekenddays
+ACT_NEW["week_days"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+ACT_NEW$week_days <- weekdays(as.Date(ACT_NEW$date)) # turns the dates into weekday's
+
+# Days of the week transformed to week_day and weekend_day
+ACT_NEW$week_days <-ifelse(ACT_NEW$week_days=="maandag" |ACT_NEW$week_days=="dinsdag" | ACT_NEW$week_days=="woensdag" |ACT_NEW$week_days=="donderdag" |ACT_NEW$week_days=="vrijdag" , "Weekday","Weekendday")
+
+AVG_week <- sqldf('select interval,week_days, AVG(New_steps_filled_in_NA) from ACT_NEW group by interval,week_days ')
+AVG_week["Average_number_of_steps_across_days"] <- NA # That creates the new column named "MY_NEW_COLUMN" filled with "NA"
+AVG_week$Average_number_of_steps_across_days <- as.numeric(AVG_week$'AVG(New_steps_filled_in_NA)')
+```
 
 
+2. Create a histogra to show the difference between weekdays and weekenddays
+```{r}
+#Histogram
 
-## Are there differences in activity patterns between weekdays and weekends?
+xyplot(Average_number_of_steps_across_days ~ interval | week_days,
+       data = AVG_week,
+       type = "l",
+       lty = c(1, 2, 2, 1),
+       lwd = c(1, 1, 1, 3),
+)
+```
+
+Conclusion is that there is a difference between Weekday number of steps and weekenddays. Especially in the morning on averages the number of steps is higher during weekdays than weekenddays.
